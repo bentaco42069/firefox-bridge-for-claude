@@ -15,6 +15,13 @@
     "<all_urls>",
     "http://localhost:8765/*"
   ],
+  "chrome_settings_overrides": {
+    "search_provider": {
+      "name": "Google AI Mode (Pro)",
+      "keyword": "aipro",
+      "search_url": "https://www.google.com/search?q={searchTerms}&udm=50"
+    }
+  },
   "background": {
     "scripts": ["background.js"],
     "persistent": true
