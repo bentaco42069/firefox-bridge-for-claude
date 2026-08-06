@@ -1,0 +1,28 @@
+{
+  "manifest_version": 2,
+  "name": "Firefox Bridge for Claude",
+  "version": "1.0.0",
+  "description": "Lets a local AI coding agent (e.g. Claude Code) drive this Firefox — navigate, read the page, click, type, screenshot, manage tabs — through a localhost-only bridge. Community tool; not affiliated with Anthropic or Mozilla.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "firefox-bridge-for-claude@community",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "<all_urls>",
+    "http://localhost:8765/*"
+  ],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": true
+  },
+  "browser_action": {
+    "default_title": "Firefox Bridge for Claude",
+    "default_popup": "popup.html",
+    "default_icon": { "48": "icon.svg", "96": "icon.svg" }
+  },
+  "icons": { "48": "icon.svg", "96": "icon.svg" }
+}

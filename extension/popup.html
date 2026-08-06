@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 240px; font: 13px system-ui, sans-serif; margin: 0; padding: 12px; background: #1b1b1d; color: #eee; }
+  h1 { font-size: 13px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #c33; box-shadow: 0 0 6px #c33; }
+  .dot.on { background: #3c3; box-shadow: 0 0 8px #3c3; }
+  .row { display: flex; justify-content: space-between; padding: 3px 0; color: #bbb; }
+  .row b { color: #fff; font-weight: 600; }
+  .status { font-size: 15px; font-weight: 700; }
+  code { color: #f2a900; }
+</style>
+</head>
+<body>
+  <h1><span id="dot" class="dot"></span> Firefox Bridge for Claude</h1>
+  <div class="row"><span>Status</span><span class="status" id="conn">checking…</span></div>
+  <div class="row"><span>Bridge</span><code id="bridge">localhost:8765</code></div>
+  <div class="row"><span>Last action</span><b id="last">-</b></div>
+  <div class="row"><span>Commands done</span><b id="count">0</b></div>
+  <div class="row"><span>Last error</span><b id="err">-</b></div>
+  <script src="popup.js"></script>
+</body>
+</html>

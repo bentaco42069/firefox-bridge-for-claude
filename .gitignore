@@ -1,0 +1,8 @@
+# machine-specific (written by install.sh)
+config.sh
+# generated / compiled
+FirefoxBridgeForClaude.exe
+bridge/launcher.cs
+# runtime output
+shots/
+*.png
