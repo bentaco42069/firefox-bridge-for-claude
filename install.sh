@@ -80,6 +80,15 @@ EOF
   fi
 fi
 
+# --- stop any previous install so a re-run/downgrade isn't blocked ---
+# A running launcher/bridge from an earlier install holds port 8765 (so the
+# freshly-installed code would never take over) and can lock the .exe below so
+# the compiler can't overwrite it. Clear both before rebuilding. These are
+# best-effort: "nothing to stop" must not abort the installer.
+taskkill //F //IM perl.exe >/dev/null 2>&1 || true
+rm -f "$DIR/FirefoxBridgeForClaude.exe" \
+      "$APPDATA/Microsoft/Windows/Start Menu/Programs/Startup/FirefoxBridgeForClaude.exe" 2>/dev/null || true
+
 # --- generate + compile the windowless launcher ---
 GITBASH_WIN="$(cygpath -w "$GITBASH")"
 LAUNCH_U="$(cygpath -u "$DIR/launch.sh")"
