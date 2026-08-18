@@ -1,7 +1,0 @@
-# Keep shell + Perl scripts LF so they run everywhere (incl. Git Bash on Windows).
-* text=auto
-*.sh   text eol=lf
-*.pl   text eol=lf
-*.svg  text
-*.exe  binary
-*.png  binary

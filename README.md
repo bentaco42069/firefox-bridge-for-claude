@@ -1,93 +1,94 @@
-# Firefox Bridge for Claude
+# Firefox with Pro Searching
 
-Let a local AI coding agent (like [Claude Code](https://claude.com/claude-code)) **drive your Firefox** — navigate, read the page, click, type, screenshot, manage tabs — the same way the built-in tooling drives Chrome.
+Lets Claude search and read the web through the copy of **Firefox already installed on your
+computer**, signed in as you.
 
-> ⚠️ **Community project.** Not affiliated with, endorsed by, or made by Anthropic or Mozilla. "Claude" and "Firefox" are trademarks of their respective owners; used here only to describe what this tool works with.
+Everything happens locally. There is no server of ours, no tunnel, no account to create, and
+nothing you search is ever sent anywhere except to Google — by your own browser, exactly as if
+you had typed it yourself.
 
-Firefox has no equivalent of the Chrome integration, so this fills the gap: a small **Firefox extension** talks to a tiny **local bridge**, and your agent drives it over the shell.
+**Built by Bentaco the Destroyer.**
 
-```
- your agent  ──shell──▶  local bridge  ◀──polls──  Firefox extension
- (ff.sh)                 (localhost:8765)           (your Firefox)
-```
+---
 
-The bridge is a command mailbox: the agent drops a command in, the extension picks it up, does it in Firefox, and drops the result back. Everything is **localhost-only** — nothing is exposed off your machine.
+## What it does
 
-## Why it's not sketchy
+| Tool | What it does |
+|---|---|
+| `google_search` | Searches Google through your own Firefox and returns the answer |
+| `set_pro_searching` | Turns Google AI Pro searching on or off |
+| `get_pro_searching` | Tells you whether Pro searching is on or off |
+| `firefox_navigate` | Opens a URL in your Firefox |
+| `firefox_get_text` | Returns the visible text of the current page |
+| `firefox_read_page` | Returns the page structure, including clickable elements |
+| `firefox_start` | Starts the local bridge if it isn't already running |
 
-- **Nothing leaves your machine.** The bridge binds `127.0.0.1` only.
-- **Loaded the clean way.** The extension is loaded through Firefox's Remote Debugging channel (RDP) — the same one Mozilla's own `web-ext` uses — which does **not** set the `navigator.webdriver` automation flag, so sites won't treat your browsing as a bot.
-- **No account, no signing, no telemetry.** It's a local dev tool. Unsigned extensions can only be loaded temporarily on release Firefox, so it's re-loaded automatically at login (see below).
+## Pro searching
+
+Google AI Pro is a **paid Google plan**, so this is **off by default** — nobody is put into a
+mode they may not be paying for, and nobody's results change without asking.
+
+Turn it on by saying:
+
+> turn on Pro searching
+
+and off again with:
+
+> turn off Pro searching
+
+When it's on, searches run in Google AI Mode using **your own Google account and whatever plan
+that account has**. Every answer states which mode produced it, so it is never ambiguous.
 
 ## Requirements
 
-- Windows 10/11
-- **Firefox** (regular release is fine)
-- **[Git for Windows](https://git-scm.com/download/win)** — provides Git Bash, Perl, and curl (all used here)
-- .NET Framework 4 (`csc.exe`) — already on every modern Windows; used once to compile the launcher
+- **Windows**
+- **Firefox** installed (from mozilla.org)
+- Nothing else. Node ships with Claude, and the bridge is bundled.
 
-## Install
+## How it works
 
-```bash
-git clone <your-repo-url> firefox-bridge-for-claude
-cd firefox-bridge-for-claude
-bash install.sh
-```
+Claude talks to a small local bridge, which drives a **hidden, separate Firefox profile** so
+your normal browsing is untouched — you can keep using Firefox while Claude works. Your cookies
+are copied into that private profile so the hidden browser is signed in as you.
 
-`install.sh` detects Firefox, Git Bash, the C# compiler, and your default Firefox profile; enables the localhost debug channel; compiles a **windowless** launcher; and installs it to run at login. Firefox then opens with the extension already loaded — every boot, no clicks.
+No inbound connections, no listening port exposed to the network, no tunnel, no remote server.
 
-## Use it
+## Setup
 
-Drive it from any agent (or yourself) that can run shell commands:
+Install it from the Claude connectors directory. There is no configuration. The first search
+starts the bridge automatically.
 
-```bash
-bash ff.sh ping
-bash ff.sh navigate '{"url":"https://example.com"}'
-bash ff.sh read_page
-bash ff.sh click '{"ref":12}'
-bash ff.sh type '{"ref":3,"text":"hello","submit":true}'
-bash ff.sh screenshot          # writes shots/shot-N.png, returns its path
-bash ff.sh get_text
-bash ff.sh tabs.list
-```
+## Privacy Policy
 
-Point your agent at this: *"You can drive my Firefox with `bash ff.sh <action> '<json>'` — actions: ping, navigate, get_text, read_page, click, type, scroll, screenshot, reload, back, forward, tabs.list/create/close/activate."*
+**This connector does not collect, store, transmit or sell any of your data.** There is no
+server behind it and no analytics, telemetry, crash reporting or usage counting of any kind.
+The author receives nothing.
 
-| action | params |
-| --- | --- |
-| `ping` | – |
-| `navigate` | `url` (or `"back"`/`"forward"`), `tabId?`, `timeout?` |
-| `get_text` / `get_html` | `max?`, `tabId?` |
-| `read_page` | `max?` – lists visible interactive elements, each tagged with a `ref` |
-| `click` | `ref` \| `selector` \| `x,y` |
-| `type` | `text`, `ref`\|`selector`, `submit?`, `replace?` |
-| `scroll` | `direction` (up/down/left/right/top/bottom) or `x,y`, `amount?` |
-| `screenshot` | `tabId?` – returns `png_path` |
-| `reload` / `back` / `forward` | `tabId?` |
-| `tabs.list` / `tabs.create` / `tabs.close` / `tabs.activate` | `url?` / `tabId?` |
+- **Data collection:** none. There is no account, and no server operated by the author that
+  your computer contacts.
+- **Usage and storage:** your searches and the pages you visit stay on your computer and are
+  never recorded or transmitted by this connector. A copy of your Firefox **cookie database**
+  and of your Google **local storage** is placed in a private profile folder inside the
+  connector's own installation directory, so the hidden browser is signed in as you. It never
+  leaves your computer. Your saved **passwords are never copied** — the connector deliberately
+  does not touch `key4.db` or `logins.json`. Screenshots, if taken, are written to a `shots`
+  folder inside the connector's own directory and are never uploaded.
+- **Third-party sharing:** none by this connector. The websites you visit — including Google —
+  see the traffic your own browser sends them, exactly as in normal browsing, and their own
+  privacy policies apply. No intermediary or third party is added.
+- **Data retention:** nothing is retained anywhere off your machine. Uninstalling the connector
+  removes its directory, and with it the copied cookies, the private profile and any
+  screenshots. Nothing needs deleting from any server, because nothing was ever sent to one.
+- **Children:** this connector is not directed at children and collects no information from
+  anyone.
+- **Contact:** bentaco42069@gmail.com
 
-`ref` values come from the most recent `read_page`.
+Full policy: [PRIVACY.md](PRIVACY.md)
 
-## Optional: Google AI Mode (Pro) search
+## Support
 
-This extension adds a **"Google AI Mode (Pro)"** search engine to Firefox (find it in **Settings → Search**). If you have a Google AI Pro subscription, set it as your default and every search — yours *or* the agent's — comes back with Pro-grade AI answers. No Pro subscription? Just ignore it — nothing is forced or auto-changed.
+bentaco42069@gmail.com
 
-It is deliberately **offered, never seized**: the extension does *not* flag it as your default (that would make Firefox nag you on every load). You opt in with one click in Settings. For a default that survives restarts, pin it with Firefox's [SearchEngines policy](https://firefox-admin-docs.mozilla.org/reference/policies/searchengines/).
+## Licence
 
-## Autostart & uninstall
-
-The compiled `FirefoxBridgeForClaude.exe` in your Startup folder brings everything up at login. To remove it: `bash uninstall.sh`.
-
-## Security notes
-
-This lets a local program **control your logged-in browser** — it can read pages and act as you on sites you're signed into. Only run it with an agent you trust, on a machine you control. The bridge has no auth (it relies on being localhost-only); don't expose port 8765 or 6000 off your machine.
-
-## Limitations
-
-- Can't act on privileged pages (`about:`, `addons.mozilla.org`, `view-source:`) — Firefox blocks extensions there.
-- Heavy logged-in single-page apps (e.g. google.com's homepage) can be slow to report "loaded"; navigation is time-bounded so it never hangs.
-- Windows-only for now (the launcher/installer are Windows-specific; the extension + bridge are cross-platform if you port those two scripts).
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+MIT

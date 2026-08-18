@@ -1,0 +1,79 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/mcpb/main/schemas/mcpb-manifest-v0.4.schema.json",
+  "manifest_version": "0.4",
+  "name": "firefox-pro-search",
+  "display_name": "Firefox with Pro Searching",
+  "version": "1.0.0",
+  "description": "Search the web through your own Firefox, using your own Google account.",
+  "long_description": "Lets Claude search and read the web through the copy of Firefox already installed on your computer, signed in as you.\n\nSearches run in Google's AI Mode using your own Google account, so you get your own results with whatever plan you already have. Everything happens locally: there is no server of ours, no tunnel, no account to create, and nothing you search is ever sent anywhere except to Google, by your own browser, exactly as if you had typed it yourself.\n\nFirefox runs hidden in a separate profile, so your normal browsing is untouched and you can keep using Firefox while Claude works.\n\nRequires Firefox. Windows only for now.",
+  "author": {
+    "name": "Bentaco the Destroyer",
+    "email": "bentaco42069@gmail.com",
+    "url": "https://github.com/bentaco42069"
+  },
+  "icon": "icon.png",
+  "privacy_policies": [
+    "https://github.com/bentaco42069/firefox-bridge-for-claude/blob/main/PRIVACY.md"
+  ],
+  "documentation": "https://github.com/bentaco42069/firefox-bridge-for-claude/blob/main/README.md",
+  "support": "mailto:bentaco42069@gmail.com",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ]
+    }
+  },
+  "tools": [
+    {
+      "name": "google_search",
+      "description": "Search Google through your own Firefox and return the answer text. Uses Google AI Mode when Pro searching is switched on."
+    },
+    {
+      "name": "set_pro_searching",
+      "description": "Turn Google AI Pro searching on or off. Off by default, since AI Pro is a paid Google plan."
+    },
+    {
+      "name": "get_pro_searching",
+      "description": "Report whether Google AI Pro searching is currently on or off."
+    },
+    {
+      "name": "firefox_navigate",
+      "description": "Open a URL in your Firefox and return the final URL."
+    },
+    {
+      "name": "firefox_get_text",
+      "description": "Return the visible text of the page currently open in your Firefox."
+    },
+    {
+      "name": "firefox_read_page",
+      "description": "Return a structured reading of the current Firefox page, including its clickable elements."
+    },
+    {
+      "name": "firefox_start",
+      "description": "Start the local Firefox bridge if it is not already running."
+    }
+  ],
+  "tools_generated": false,
+  "keywords": [
+    "firefox",
+    "search",
+    "google",
+    "browser",
+    "web",
+    "research"
+  ],
+  "license": "MIT",
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": [
+      "win32"
+    ],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  }
+}

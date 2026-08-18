@@ -9,6 +9,7 @@ let connected = false;
 let lastAction = "-";
 let lastError = "-";
 let doneCount = 0;
+let proOn = true;   // route Google searches through AI Mode (Pro); flip anytime via the popup
 
 /* ---------- helpers ---------- */
 
@@ -17,11 +18,15 @@ async function getTargetTab(params) {
   if (params.tabId != null) {
     return await browser.tabs.get(params.tabId);
   }
-  const tabs = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+  // Guard every tabs.query: a wedged tabs/IPC layer (heavy/privileged page) must
+  // never hang a command past the loop cap - fall through to a bounded fallback.
+  const tabs = await withTimeout(browser.tabs.query({ active: true, lastFocusedWindow: true }), 4000, null);
   if (tabs && tabs[0]) return tabs[0];
-  const anyActive = await browser.tabs.query({ active: true });
+  const anyActive = await withTimeout(browser.tabs.query({ active: true }), 4000, null);
   if (anyActive && anyActive[0]) return anyActive[0];
-  throw new Error("no active tab found");
+  const anyTab = await withTimeout(browser.tabs.query({}), 4000, null);
+  if (anyTab && anyTab[0]) return anyTab[0];
+  throw new Error("no active tab found (tabs API unresponsive)");
 }
 
 // Inject a function (with a JSON-serializable arg) into a tab and return its value.
@@ -29,7 +34,9 @@ async function runFn(tabId, fn, arg) {
   const code = "(" + fn.toString() + ")(" + JSON.stringify(arg || {}) + ")";
   let res;
   try {
-    res = await browser.tabs.executeScript(tabId, { code });
+    // Bound executeScript so a stuck/loading tab can never hang the command loop.
+    res = await withTimeout(browser.tabs.executeScript(tabId, { code }), 12000, "__CFB_EXEC_TIMEOUT__");
+    if (res === "__CFB_EXEC_TIMEOUT__") throw new Error("executeScript timed out (12s) - tab busy/loading");
   } catch (e) {
     throw new Error("cannot run on this page (" + (e && e.message ? e.message : e) +
       "). Privileged pages like about:, addons.mozilla.org and view-source: are off-limits to extensions.");
@@ -73,24 +80,87 @@ function withTimeout(promise, ms, fallback) {
   ]);
 }
 
+// --- diagnostic ring buffer: record exactly where a command stalls (no guessing) ---
+var DBG = [];
+function dbg(s) {
+  DBG.push(((Date.now() % 100000) / 1000).toFixed(2) + "  " + s);
+  if (DBG.length > 300) DBG.shift();
+}
+
+function hostOf(u) { try { return new URL(u).host; } catch (e) { return null; } }
+
+// Non-blocking tab read: browser.tabs.get(id) can BLOCK during a process switch
+// (privileged -> remote). tabs.query({}) reads the parent-process cache index and
+// never calls into a loading content window. (Pro-confirmed 2026-08-09.)
+async function queryTab(tabId) {
+  const all = await withTimeout(browser.tabs.query({}), 3000, []);
+  return (all || []).find(t => t.id === tabId) || null;
+}
+
+// Fire a navigation and await REAL load completion via webNavigation.onCompleted.
+// This hooks the network/parser layer and fires independent of paint/visibility -
+// unlike tab.status / tabs.onUpdated, which in HEADLESS mode stay stuck on "loading"
+// forever because the layout/paint flush that gates STATE_STOP never happens.
+// Listener is attached BEFORE tabs.update (no race); we resolve on the first
+// main-frame (frameId 0) completion on OUR tab that isn't the pre-nav about:blank,
+// so redirects don't break it.
+function navigateAndAwaitLoad(tabId, targetUrl, timeoutMs) {
+  return new Promise((resolve) => {
+    let to = null, doneOnce = false;
+    // HEAVY-PAGE FIX (streaming SPAs like Google AI Mode): onCompleted == the window
+    // "load" event and NEVER fires on a page that keeps streaming/loading, so the old
+    // code hung the whole timeout. Resolve on whichever fires FIRST — DOMContentLoaded
+    // (DOM parsed = page is readable) OR onCompleted — so heavy pages return promptly.
+    function finish(v) { if (doneOnce) return; doneOnce = true; cleanup(); resolve(v); }
+    function mk(kind) {
+      return function (d) {
+        if (d.tabId !== tabId || d.frameId !== 0) return;
+        if (/^about:blank$/i.test(d.url || "")) return; // ignore the blank pre-nav tab
+        dbg("webNav " + kind + " tab=" + tabId + " url=" + d.url);
+        finish({ ok: true, url: d.url });
+      };
+    }
+    var onComp = mk("complete"), onDom = mk("domready");
+    function cleanup() {
+      if (to) clearTimeout(to);
+      try { browser.webNavigation.onCompleted.removeListener(onComp); } catch (e) {}
+      try { browser.webNavigation.onDOMContentLoaded.removeListener(onDom); } catch (e) {}
+    }
+    try { browser.webNavigation.onCompleted.addListener(onComp); } catch (e) { dbg("webNav onComp add FAIL " + e); }
+    try { browser.webNavigation.onDOMContentLoaded.addListener(onDom); } catch (e) { dbg("webNav onDom add FAIL " + e); }
+    to = setTimeout(() => { dbg("webNav timeout tab=" + tabId); finish({ ok: false, url: targetUrl }); }, timeoutMs);
+    Promise.resolve(browser.tabs.update(tabId, { url: targetUrl, active: true }))
+      .catch((e) => { dbg("tabs.update err " + e); });
+  });
+}
+
 // Navigate a tab, fully bounded (never hangs). Privileged/initial pages
 // (about:home / about:newtab / about:blank) can't be navigated in place, so
 // open the URL in a fresh tab instead.
 async function navigateTab(tabId, url, timeoutMs) {
   const cap = timeoutMs || 15000;
-  const t0 = await withTimeout(browser.tabs.get(tabId), 3000, null);
-  const before = t0 ? (t0.url || "") : "";
   let targetId = tabId;
-  if (!t0 || /^about:/i.test(before) || before === "") {
-    const nt = await withTimeout(browser.tabs.create({ url, active: true }), 6000, null);
-    if (nt && nt.id != null) targetId = nt.id;
-  } else {
-    await withTimeout(browser.tabs.update(tabId, { url }), 6000, null);
+  dbg("nav start tab=" + tabId + " -> " + url);
+  const t0 = await queryTab(tabId);
+  dbg("nav t0 url=" + (t0 ? t0.url : "null"));
+  // Privileged startup pages (about:*, chrome://blanktab, empty) can't be navigated
+  // in place -> open a fresh window on about:blank and drive THAT tab.
+  // about:blank IS navigable in place — do NOT force it onto the windows.create path
+  // (that create call is exactly what wedges on FF153). Only truly-special pages need a fresh tab.
+  var u0 = (t0 && t0.url) || "";
+  const priv = !t0 || /^chrome:/i.test(u0) || /blanktab/i.test(u0) || /^about:(home|newtab|welcome|privatebrowsing|blocked)/i.test(u0);
+  if (priv) {
+    dbg("nav fresh window (privileged start)");
+    const nw = await withTimeout(browser.windows.create({ url: "about:blank", type: "normal", width: 1920, height: 1080, focused: true }), 8000, "__TO__");
+    if (nw !== "__TO__" && nw && nw.tabs && nw.tabs[0] && nw.tabs[0].id != null) targetId = nw.tabs[0].id;
+    dbg("nav window tab=" + targetId);
   }
-  await withTimeout(waitForFreshLoad(targetId, cap), cap + 1000, "timeout");
-  const t2 = await withTimeout(browser.tabs.get(targetId), 3000, null);
-  return t2 ? { ok: true, url: t2.url, title: t2.title }
-            : { ok: true, url: url, note: "navigation started (load status unknown)" };
+  // navigateAndAwaitLoad fires tabs.update AND waits on webNavigation.onCompleted
+  // (paint-independent), so headless loads actually resolve.
+  const res = await navigateAndAwaitLoad(targetId, url, cap);
+  const ft = await queryTab(targetId);
+  dbg("nav end ok=" + res.ok + " url=" + (ft ? ft.url : res.url));
+  return { ok: true, url: (ft && ft.url) || res.url || url, title: ft ? ft.title : "", loaded: res.ok };
 }
 
 /* ---------- injected page functions (run in content sandbox) ---------- */
@@ -198,6 +268,8 @@ function pageScroll(arg) {
 async function handle(cmd) {
   const p = cmd.params || {};
   switch (cmd.action) {
+    case "cfbmarker": return { marker: "RAGNAROK-PATCH-20260809" };
+    case "cfbdebug": return { log: DBG.slice(-80) };
     case "ping":
     case "health": {
       let tab = null;
@@ -300,19 +372,41 @@ async function postResult(id, result) {
   });
 }
 
+let GENERATION = 0;
+
+async function registerGeneration() {
+  const r = await fetch(BRIDGE + "/register_generation", { cache: "no-store" });
+  const j = await r.json();
+  GENERATION = j.generation;
+  dbg("registered generation=" + GENERATION);
+}
+
 async function pollLoop() {
+  // Announce this context first. Bumps the bridge generation so any older zombie
+  // loop (left by an RDP add-on reload) gets 410 on its next poll and halts -
+  // that zombie was silently draining commands out of the single-consumer queue.
+  for (;;) {
+    try { await registerGeneration(); break; }
+    catch (e) { await new Promise((r) => setTimeout(r, 1500)); }
+  }
   for (;;) {
     try {
-      const res = await fetch(BRIDGE + "/poll", { cache: "no-store" });
+      const res = await fetch(BRIDGE + "/poll?generation=" + GENERATION, { cache: "no-store" });
+      if (res.status === 410) { dbg("410 ZOMBIE -> halting this loop"); connected = false; return; }
       connected = true;
       const cmd = await res.json();
       if (cmd && cmd.id != null && cmd.action) {
         lastAction = cmd.action;
+        dbg("LOOP handle id=" + cmd.id + " action=" + cmd.action);
         let result;
-        try { result = await handle(cmd); lastError = "-"; }
+        try { result = await withTimeout(handle(cmd), 30000, { error: "command timed out after 30s (loop kept alive)" }); lastError = "-"; }
         catch (e) { result = { error: String(e && e.stack ? e.stack : e) }; lastError = String(e && e.message ? e.message : e); }
-        try { await postResult(cmd.id, result); doneCount++; } catch (e) {}
-        continue; // check immediately for the next queued command
+        dbg("LOOP done id=" + cmd.id + " -> " + (result && result.error ? "ERR " + result.error : "ok"));
+        try { await postResult(cmd.id, result); doneCount++; } catch (e) { dbg("LOOP POST FAIL id=" + cmd.id + " " + e); }
+        // ack AFTER the result is stored, so a command grabbed by a dying consumer
+        // gets redelivered instead of lost.
+        try { await fetch(BRIDGE + "/ack?id=" + cmd.id, { cache: "no-store" }); dbg("LOOP acked id=" + cmd.id); } catch (e) {}
+        continue;
       }
     } catch (e) {
       connected = false; // bridge down; back off
@@ -326,8 +420,63 @@ async function pollLoop() {
 // expose status to the popup
 browser.runtime.onMessage.addListener((msg) => {
   if (msg === "status") {
-    return Promise.resolve({ connected, lastAction, lastError, doneCount, bridge: BRIDGE });
+    return Promise.resolve({ connected, lastAction, lastError, doneCount, bridge: BRIDGE, proOn });
+  }
+  if (msg && typeof msg === "object") {
+    if (msg.cmd === "getPro") return Promise.resolve({ proOn });
+    if (msg.cmd === "setPro" || msg.cmd === "answerPro") return setPro(msg.on);
   }
 });
 
+// ---- Pro (AI Mode) search upgrade -------------------------------------------
+// "Pro" = route Google searches through AI Mode (udm=50). A runtime flag we flip
+// anytime from the toolbar popup — no reboot, nothing forced. The persistent
+// choice lives in the bridge's pro.state (set by the boot popup); storage.local
+// is a fallback for when the bridge isn't reachable.
+async function initPro() {
+  try {
+    const r = await fetch(BRIDGE + "/pro", { cache: "no-store" });
+    const j = await r.json();
+    if (j && typeof j.on === "boolean") { proOn = j.on; return; }
+  } catch (e) {}
+  try {
+    const s = await browser.storage.local.get("proOn");
+    if (s && typeof s.proOn === "boolean") proOn = s.proOn;
+  } catch (e) {}
+}
+
+async function setPro(on) {
+  proOn = !!on;
+  try { await browser.storage.local.set({ proOn }); } catch (e) {}
+  try {
+    await fetch(BRIDGE + "/pro", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ on: proOn }),
+    });
+  } catch (e) {}
+  return { ok: true, proOn };
+}
+
+// When Pro is on, rewrite google.com/search -> add udm=50 (AI Mode). The udm===50
+// guard stops a redirect loop; only top-level page loads are touched.
+function proRedirect(details) {
+  if (!proOn) return {};
+  try {
+    const u = new URL(details.url);
+    if (u.pathname !== "/search" || !u.searchParams.has("q")) return {};
+    if (u.searchParams.get("udm") === "50") return {};
+    u.searchParams.set("udm", "50");
+    return { redirectUrl: u.toString() };
+  } catch (e) { return {}; }
+}
+try {
+  browser.webRequest.onBeforeRequest.addListener(
+    proRedirect,
+    { urls: ["*://www.google.com/search*", "*://google.com/search*"], types: ["main_frame"] },
+    ["blocking"]
+  );
+} catch (e) {}
+
 pollLoop();
+initPro();

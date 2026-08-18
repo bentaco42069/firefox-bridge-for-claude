@@ -11,15 +11,20 @@
   .row b { color: #fff; font-weight: 600; }
   .status { font-size: 15px; font-weight: 700; }
   code { color: #f2a900; }
+  .pro { display: flex; justify-content: space-between; align-items: center;
+         margin-top: 10px; padding-top: 10px; border-top: 1px solid #333; }
+  #protoggle { cursor: pointer; border: 0; border-radius: 6px; padding: 5px 14px;
+               font: 700 12px system-ui, sans-serif; }
 </style>
 </head>
 <body>
-  <h1><span id="dot" class="dot"></span> Firefox Bridge for Claude</h1>
+  <h1><span id="dot" class="dot"></span> Claude Firefox Bridge</h1>
   <div class="row"><span>Status</span><span class="status" id="conn">checking…</span></div>
   <div class="row"><span>Bridge</span><code id="bridge">localhost:8765</code></div>
   <div class="row"><span>Last action</span><b id="last">-</b></div>
   <div class="row"><span>Commands done</span><b id="count">0</b></div>
   <div class="row"><span>Last error</span><b id="err">-</b></div>
+  <div class="pro"><span>Pro search <span style="color:#8f8a7c">(AI Mode)</span></span><button id="protoggle">…</button></div>
   <script src="popup.js"></script>
 </body>
 </html>
