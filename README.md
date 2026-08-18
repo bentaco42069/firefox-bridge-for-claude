@@ -68,12 +68,6 @@ Point your agent at this: *"You can drive my Firefox with `bash ff.sh <action> '
 
 `ref` values come from the most recent `read_page`.
 
-## Optional: Google AI Mode (Pro) search
-
-This extension adds a **"Google AI Mode (Pro)"** search engine to Firefox (find it in **Settings → Search**). If you have a Google AI Pro subscription, set it as your default and every search — yours *or* the agent's — comes back with Pro-grade AI answers. No Pro subscription? Just ignore it — nothing is forced or auto-changed.
-
-It is deliberately **offered, never seized**: the extension does *not* flag it as your default (that would make Firefox nag you on every load). You opt in with one click in Settings. For a default that survives restarts, pin it with Firefox's [SearchEngines policy](https://firefox-admin-docs.mozilla.org/reference/policies/searchengines/).
-
 ## Autostart & uninstall
 
 The compiled `FirefoxBridgeForClaude.exe` in your Startup folder brings everything up at login. To remove it: `bash uninstall.sh`.
