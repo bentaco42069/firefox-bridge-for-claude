@@ -155,10 +155,73 @@ const TOOLS = [
   {
     name: 'firefox_read_page',
     description: 'Return a structured reading of the current Firefox page, including its ' +
-                 'clickable elements.',
+                 'clickable elements (each with a ref number for firefox_click/firefox_type).',
     inputSchema: { type: 'object', properties: {} },
     annotations: { title: 'Read page structure', readOnlyHint: true, destructiveHint: false,
                    idempotentHint: true, openWorldHint: false }
+  },
+  {
+    name: 'firefox_click',
+    description: 'Click an element on the current page — by its ref number from ' +
+                 'firefox_read_page, or by a CSS selector. Full page control, like the Chrome connector.',
+    inputSchema: { type: 'object', properties: {
+      ref: { type: 'number', description: 'ref from firefox_read_page' },
+      selector: { type: 'string', description: 'CSS selector' } } },
+    annotations: { title: 'Click', readOnlyHint: false, destructiveHint: false,
+                   idempotentHint: false, openWorldHint: true }
+  },
+  {
+    name: 'firefox_type',
+    description: 'Type text into a field on the current page — by ref (from firefox_read_page) ' +
+                 'or CSS selector. Set submit=true to press Enter afterward.',
+    inputSchema: { type: 'object', properties: {
+      ref: { type: 'number' }, selector: { type: 'string' },
+      text: { type: 'string', description: 'text to type' },
+      submit: { type: 'boolean', description: 'press Enter after typing' } }, required: ['text'] },
+    annotations: { title: 'Type text', readOnlyHint: false, destructiveHint: false,
+                   idempotentHint: false, openWorldHint: true }
+  },
+  {
+    name: 'firefox_scroll',
+    description: 'Scroll the current page: direction up/down/left/right/top/bottom.',
+    inputSchema: { type: 'object', properties: {
+      direction: { type: 'string' }, amount: { type: 'number' } } },
+    annotations: { title: 'Scroll', readOnlyHint: false, destructiveHint: false,
+                   idempotentHint: true, openWorldHint: false }
+  },
+  {
+    name: 'firefox_get_html',
+    description: 'Return the raw HTML of the current page.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { title: 'Read page HTML', readOnlyHint: true, destructiveHint: false,
+                   idempotentHint: true, openWorldHint: false }
+  },
+  {
+    name: 'firefox_screenshot',
+    description: 'Take a PNG screenshot of the current page (returned as base64).',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { title: 'Screenshot', readOnlyHint: true, destructiveHint: false,
+                   idempotentHint: true, openWorldHint: false }
+  },
+  {
+    name: 'firefox_back',
+    description: 'Go back one page in the current tab.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { title: 'Back', readOnlyHint: false, destructiveHint: false,
+                   idempotentHint: false, openWorldHint: true }
+  },
+  {
+    name: 'firefox_upload',
+    description: 'Attach a local file to a file-upload field on the current page (by CSS ' +
+                 'selector, or the first file input found). This is the one thing browser ' +
+                 'extensions cannot do — it uses Firefox\'s built-in automation engine. Full ' +
+                 'parity with the Chrome connector.',
+    inputSchema: { type: 'object', properties: {
+      path: { type: 'string', description: 'Absolute path to the local file' },
+      selector: { type: 'string', description: 'CSS selector of the file input (optional)' } },
+      required: ['path'] },
+    annotations: { title: 'Attach a file', readOnlyHint: false, destructiveHint: false,
+                   idempotentHint: false, openWorldHint: true }
   },
   {
     name: 'firefox_start',
@@ -311,6 +374,35 @@ async function callTool(name, args) {
     } catch (e) {
       return 'Bridge restarted. Could not confirm the sign-in state: ' + e.message;
     }
+  }
+  if (name === 'firefox_click') {
+    const res = await bridgeCmd('click', { ref: args.ref, selector: args.selector }, 30000);
+    return JSON.stringify(res.result !== undefined ? res.result : res).slice(0, 2000);
+  }
+  if (name === 'firefox_type') {
+    const res = await bridgeCmd('type', { ref: args.ref, selector: args.selector,
+      text: String(args.text || ''), submit: !!args.submit, replace: args.replace }, 30000);
+    return JSON.stringify(res.result !== undefined ? res.result : res).slice(0, 2000);
+  }
+  if (name === 'firefox_scroll') {
+    const res = await bridgeCmd('scroll', { direction: args.direction, amount: args.amount }, 20000);
+    return JSON.stringify(res.result !== undefined ? res.result : res).slice(0, 1000);
+  }
+  if (name === 'firefox_get_html') return asText(await bridgeCmd('get_html', {}, 30000));
+  if (name === 'firefox_screenshot') {
+    const res = await bridgeCmd('screenshot', {}, 30000);
+    const r = (res && res.result) || res;
+    return JSON.stringify({ url: r && r.url, png_base64: r && r.png_base64 });
+  }
+  if (name === 'firefox_back') {
+    const res = await bridgeCmd('back', {}, 20000);
+    return JSON.stringify(res.result !== undefined ? res.result : res).slice(0, 500);
+  }
+  if (name === 'firefox_upload') {
+    // The one thing an extension content-script CANNOT do (browser security blocks setting a
+    // file input). Uses Firefox's Marionette automation engine instead - full Chrome parity.
+    const mar = require('./marionette.js');
+    return await mar.uploadFile(String(args.path || ''), args.selector);
   }
   throw new Error('unknown tool: ' + name);
 }

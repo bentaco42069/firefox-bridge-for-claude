@@ -466,7 +466,10 @@ async function start(verbose) {
   try {
     // --window-size matters: the headless default viewport is small enough that desktop
     // apps lay out cramped or refuse to render at all.
-    spawn(ff, ['-no-remote', '-profile', AUTO_PROFILE, '-headless',
+    // -marionette enables Firefox's built-in automation engine (port 2828) ALONGSIDE the
+    // RDP add-on channel. The extension handles click/type/read/etc; Marionette adds the one
+    // thing an extension can't: attaching a file to an upload field (firefox_upload).
+    spawn(ff, ['-no-remote', '-profile', AUTO_PROFILE, '-headless', '-marionette',
                '--window-size=1920,1080',
                '-start-debugger-server', String(RDP_PORT), 'about:blank'],
           { detached: true, stdio: 'ignore', windowsHide: true }).unref();
